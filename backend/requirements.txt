@@ -1,0 +1,18 @@
+fastapi
+uvicorn
+pyaudio
+webrtcvad-wheels
+soundcard
+numpy
+websockets
+python-multipart
+requests
+faster-whisper
+torch --index-url https://download.pytorch.org/whl/cu118
+chromadb
+langchain
+langchain-openai
+openai
+tiktoken
+playwright
+pywin32
