@@ -12,3 +12,8 @@ release
 out
 .stack-work
 package-lock.json
+
+# test-mitm logs and secrets
+test-mitm/*.txt
+test-mitm/*.jsonl
+test-mitm/__pycache__/

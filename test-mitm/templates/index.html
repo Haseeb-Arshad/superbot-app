@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SuperBot Traffic Viewer</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&display=swap');
+
+        body {
+            font-family: 'JetBrains Mono', monospace;
+        }
+
+        .scrollbar-hide::-webkit-scrollbar {
+            display: none;
+        }
+    </style>
+</head>
+
+<body class="bg-gray-900 text-gray-100 h-screen flex flex-col overflow-hidden">
+
+    <!-- Header -->
+    <header class="border-b border-gray-700 bg-gray-800 p-4 flex justify-between items-center z-10 shadow-lg">
+        <h1 class="text-xl font-bold text-green-400 flex items-center gap-2">
+            <span class="animate-pulse">●</span> Traffic Mission Control
+        </h1>
+        <div class="flex gap-4">
+            <input type="text" id="filter" placeholder="Filter URL/Content..."
+                class="bg-gray-900 border border-gray-600 rounded px-3 py-1 text-sm focus:outline-none focus:border-green-500">
+            <button onclick="clearLogs()" class="text-red-400 hover:text-red-300 text-sm">Clear</button>
+        </div>
+    </header>
+
+    <!-- Main Content -->
+    <main id="log-container" class="flex-1 overflow-y-auto p-4 space-y-3 pb-20 scroll-smooth">
+        <!-- Logs will be injected here -->
+    </main>
+
+    <!-- Footer Status -->
+    <footer class="bg-gray-800 border-t border-gray-700 p-2 text-xs text-gray-500 flex justify-between">
+        <span>Status: <span id="status" class="text-yellow-500">Connecting...</span></span>
+        <span>Auto-scroll: <input type="checkbox" id="autoscroll" checked></span>
+    </footer>
+
+    <script>
+        const container = document.getElementById('log-container');
+        const statusEl = document.getElementById('status');
+        let logs = [];
+
+        function createLogCard(log) {
+            const isReq = log.type === 'HTTP_REQ';
+            const isRes = log.type === 'HTTP_RES';
+            const isWs = log.type.includes('WS');
+
+            let colorClass = 'border-gray-700';
+            let icon = '📝';
+            let title = log.type;
+
+            if (isReq) { colorClass = 'border-blue-700 bg-blue-900/10'; icon = '↗️ REQ'; }
+            if (isRes) { colorClass = 'border-green-700 bg-green-900/10'; icon = 'jw RES'; }
+            if (isWs) { colorClass = 'border-purple-700 bg-purple-900/10'; icon = '⚡ WS'; }
+
+            const div = document.createElement('div');
+            div.className = `border-l-4 p-3 rounded bg-gray-800 shadow-sm ${colorClass} hover:bg-gray-700/50 transition-colors`;
+
+            // Format time
+            const time = log.timestamp ? log.timestamp.split(' ')[1] : '';
+
+            div.innerHTML = `
+                <div class="flex justify-between items-start mb-1">
+                    <div class="font-bold flex items-center gap-2 text-sm">
+                        <span class="text-xs text-gray-500">${time}</span>
+                        <span class="${isReq ? 'text-blue-400' : isRes ? 'text-green-400' : 'text-purple-400'}">${icon}</span>
+                        <span class="break-all">${log.method || log.status || log.type}</span>
+                    </div>
+                    <div class="text-xs text-gray-400 bg-gray-900 px-2 py-0.5 rounded">${log.content_type || 'websocket'}</div>
+                </div>
+                <div class="text-xs text-gray-300 mb-2 font-mono break-all opacity-80">${log.url}</div>
+                <details class="group">
+                    <summary class="cursor-pointer text-xs text-gray-500 hover:text-gray-300 select-none">Show Body</summary>
+                    <pre class="mt-2 text-xs text-green-300 overflow-x-auto bg-gray-900 p-2 rounded max-h-60 scrollbar-hide">${escapeHtml(log.body)}</pre>
+                </details>
+            `;
+            return div;
+        }
+
+        function escapeHtml(text) {
+            if (!text) return '';
+            return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+        }
+
+        function addLog(log) {
+            const card = createLogCard(log);
+            container.appendChild(card);
+
+            // Limit DOM nodes to 500 to prevent lag
+            if (container.children.length > 500) {
+                container.removeChild(container.firstChild);
+            }
+
+            if (document.getElementById('autoscroll').checked) {
+                container.scrollTop = container.scrollHeight;
+            }
+            logs.push(log);
+        }
+
+        function clearLogs() {
+            container.innerHTML = '';
+            logs = [];
+        }
+
+        // 1. Load History first
+        fetch('/api/history').then(res => res.json()).then(data => {
+            data.forEach(addLog);
+        });
+
+        // 2. Connect SSE for real-time
+        const evtSource = new EventSource("/api/logs");
+
+        evtSource.onmessage = function (event) {
+            try {
+                const log = JSON.parse(event.data);
+                addLog(log);
+            } catch (e) { console.error("Parse error", e); }
+        };
+
+        evtSource.onopen = () => {
+            statusEl.textContent = "Live";
+            statusEl.className = "text-green-500 font-bold";
+        };
+
+        evtSource.onerror = () => {
+            statusEl.textContent = "Disconnected (Retrying...)";
+            statusEl.className = "text-red-500";
+        };
+
+        // Filter Logic
+        document.getElementById('filter').addEventListener('input', (e) => {
+            const term = e.target.value.toLowerCase();
+            const cards = container.children;
+            for (let card of cards) {
+                const text = card.textContent.toLowerCase();
+                if (text.includes(term)) card.style.display = 'block';
+                else card.style.display = 'none';
+            }
+        });
+
+    </script>
+</body>
+
+</html>
